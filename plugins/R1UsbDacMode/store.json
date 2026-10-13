@@ -1,0 +1,6 @@
+{
+  "description": "Manually prepares the HiBy R1 USB-C port for use as a USB DAC with an iPhone, then restores normal USB behavior.",
+  "category": "Audio",
+  "author": "Deepak Srivastav",
+  "publish": true
+}

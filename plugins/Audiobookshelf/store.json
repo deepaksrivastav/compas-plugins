@@ -1,0 +1,16 @@
+{
+  "description": "Download audiobooks from Audiobookshelf into the Compás Audiobooks library. Download manager only: no playback launch or position synchronization.",
+  "category": "Listening",
+  "author": "Deepak Srivastav",
+  "files": [
+    {
+      "src": "icons/audiobookshelf.png",
+      "dest": ".plugin-assets/Audiobookshelf/audiobookshelf.png"
+    },
+    {
+      "src": "icons/audiobookshelf_s.png",
+      "dest": ".plugin-assets/Audiobookshelf/audiobookshelf_s.png"
+    }
+  ],
+  "publish": true
+}
