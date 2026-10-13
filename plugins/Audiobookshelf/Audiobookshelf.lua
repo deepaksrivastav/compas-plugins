@@ -39,6 +39,7 @@ local ICON_PATH = "stream_media/audiobookshelf_row.png"
 local ICON_PATH_SELECTED = "stream_media/audiobookshelf_row_s.png"
 local HAS_DOWNLOAD_PROGRESS = plugin.has_capability("network.http.download_progress")
 local active_download = nil
+local show_downloaded
 
 local function toast(message)
     plugin.show_toast(tostring(message or "Audiobookshelf request failed"))
@@ -223,10 +224,14 @@ local function refresh_item(id, callback)
     end)
 end
 
-local function delete_item(id)
+local function delete_item(id, replace_handle)
     local s, item = item_state(id)
     local files = item.files or {}
-    if #files == 0 then toast("Book is not downloaded"); return end
+    if #files == 0 then
+        toast("Book is not downloaded")
+        show_downloaded(replace_handle)
+        return
+    end
     local present = {}
     for _, file in ipairs(files) do
         local parent, basename = (file.path or ""):match("^(.*)/([^/]+)$")
@@ -259,6 +264,7 @@ local function delete_item(id)
         item.files, item.path, item.downloaded, item.cover = {}, "", false, nil
         save_json(STATE_KEY, s)
         toast("Missing audio files entry cleared")
+        show_downloaded(replace_handle)
         return
     end
     local failed = false
@@ -271,6 +277,7 @@ local function delete_item(id)
     item.cover = nil
     save_json(STATE_KEY, s)
     toast(failed and "Local entry cleared; some files remain" or "Local copy deleted")
+    show_downloaded(replace_handle)
 end
 
 local function update_download_progress(active)
@@ -512,7 +519,7 @@ local function download_item(item)
     download_next(active_download)
 end
 
-local function open_item(item)
+local function open_item(item, replace_handle)
     local id = tostring(item.id or "")
     local title = item.media and item.media.metadata and item.media.metadata.title or item.title or id
     local rows = {}
@@ -523,13 +530,14 @@ local function open_item(item)
         rows[#rows + 1] = "Download"
     end
     rows[#rows + 1] = "Refresh metadata"
-    plugin.show_list(title, rows, function(index)
-        if rows[index] == "Delete local copy" then delete_item(id)
+    local item_handle
+    item_handle = plugin.show_list(title, rows, function(index)
+        if rows[index] == "Delete local copy" then delete_item(id, item_handle)
         elseif rows[index] == "Download" or rows[index] == "Download again" then download_item(item)
         elseif rows[index] == "Refresh metadata" then refresh_item(id, function(_, err)
             toast(err or "Metadata refreshed")
         end) end
-    end)
+    end, replace_handle and { replace = replace_handle } or nil)
 end
 
 local function fetch_library(library)
@@ -545,10 +553,11 @@ local function fetch_library(library)
             end
         end
         if #rows == 0 then toast("No audiobooks found"); return end
-        plugin.show_list(library.name or "Audiobookshelf", rows, function(index)
+        local list_handle
+        list_handle = plugin.show_list(library.name or "Audiobookshelf", rows, function(index)
             local item = items[index]
             if item then refresh_item(tostring(item.id), function(full, refresh_err)
-                if refresh_err then toast(refresh_err) else open_item(full or item) end
+                if refresh_err then toast(refresh_err) else open_item(full or item, list_handle) end
             end) end
         end)
     end)
@@ -572,7 +581,7 @@ local function fetch_libraries()
     end)
 end
 
-local function show_downloaded()
+show_downloaded = function(replace_handle)
     local s = state()
     local rows, ids = {}, {}
     for id, item in pairs(s.items) do
@@ -581,12 +590,18 @@ local function show_downloaded()
             rows[#rows + 1] = tostring(item.title or id)
         end
     end
-    if #rows == 0 then toast("No downloaded books"); return end
-    plugin.show_list("Downloaded", rows, function(index)
+    if #rows == 0 then
+        toast("No downloaded books")
+        plugin.show_list("Downloaded", { "No downloaded books" }, function() end,
+            replace_handle and { replace = replace_handle } or nil)
+        return
+    end
+    local list_handle
+    list_handle = plugin.show_list("Downloaded", rows, function(index)
         refresh_item(ids[index], function(item, err)
-            if err then toast(err) else open_item(item or { id = ids[index] }) end
+            if err then toast(err) else open_item(item or { id = ids[index] }, list_handle) end
         end)
-    end)
+    end, replace_handle and { replace = replace_handle } or nil)
 end
 
 local function configure_url()
