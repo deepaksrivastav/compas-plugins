@@ -44,6 +44,28 @@ local function toast(message)
     plugin.show_toast(tostring(message or "Audiobookshelf request failed"))
 end
 
+-- The plugin API does not expose Wi-Fi state directly. Match Discover's
+-- behavior by turning the HTTP connection failures that normally mean Wi-Fi
+-- is disabled or unavailable into an actionable toast.
+-- This error classification and message are adapted from
+-- Discover plugin: https://github.com/Starnished66/compas-plugins/blob/main/plugins/Discover/Discover.lua
+local CONNECTION_ERRORS = {
+    dns = true,
+    dns_failure = true,
+    resolve_failed = true,
+    connect_failed = true,
+    connect_timeout = true,
+    timeout = true,
+}
+
+local function friendly_request_error(err)
+    local error_code = tostring(err or ""):lower()
+    if CONNECTION_ERRORS[error_code] then
+        return "No internet connection -- check Wi-Fi and try again"
+    end
+    return tostring(err or "Audiobookshelf request failed")
+end
+
 local function trim(value)
     return (tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -110,7 +132,7 @@ local function request(method, path, body, callback)
         options.content_type = "application/json"
     end
     local handle = plugin.http_request(options, function(status, response, err)
-        if err then callback(nil, err); return end
+        if err then callback(nil, friendly_request_error(err)); return end
         if status < 200 or status >= 300 then
             callback(nil, "Audiobookshelf HTTP " .. tostring(status))
             return
@@ -122,7 +144,7 @@ local function request(method, path, body, callback)
         end
         callback(value or {}, nil)
     end)
-    if not handle then callback(nil, "Could not start Audiobookshelf request") end
+    if not handle then callback(nil, friendly_request_error("Could not start Audiobookshelf request")) end
 end
 
 local function load_json(key, fallback)
@@ -334,7 +356,7 @@ local function download_next(active)
             active.download_handle = nil
             active.cover_downloading = false
             if cover_err then
-                finish_download(active, cover_err)
+                finish_download(active, friendly_request_error(cover_err))
             else
                 finish_download(active)
             end
@@ -358,7 +380,7 @@ local function download_next(active)
         if err then
             close_download_progress(active)
             active_download = nil
-            toast("Download failed: " .. tostring(err))
+            toast("Download failed: " .. friendly_request_error(err))
             return
         end
         active.saved_files[#active.saved_files + 1] = {
@@ -371,7 +393,7 @@ local function download_next(active)
         active.download_handle = nil
         close_download_progress(active)
         active_download = nil
-        toast(start_err or "Could not start download")
+        toast(friendly_request_error(start_err or "Could not start download"))
     else
         active.download_handle = handle
         update_download_progress(active)
@@ -591,7 +613,7 @@ local function login_with_credentials(username, password)
         max_response_bytes = JSON_LIMIT,
     }
     plugin.http_request(options, function(status, response, err)
-        if err then toast(err); return end
+        if err then toast(friendly_request_error(err)); return end
         if status < 200 or status >= 300 then
             toast("Audiobookshelf login failed (HTTP " .. tostring(status) .. ")")
             return
